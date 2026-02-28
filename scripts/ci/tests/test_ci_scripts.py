@@ -20,6 +20,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 SCRIPTS_DIR = ROOT / "scripts" / "ci"
+ANDROID_SCRIPTS_DIR = ROOT / "scripts" / "android"
 
 
 def run_cmd(
@@ -91,6 +92,72 @@ class CiScriptsBehaviorTest(unittest.TestCase):
 
     def _script(self, name: str) -> str:
         return str(SCRIPTS_DIR / name)
+
+    def _android_script(self, name: str) -> str:
+        return str(ANDROID_SCRIPTS_DIR / name)
+
+    def test_android_selfcheck_help_mentions_modes(self) -> None:
+        proc = run_cmd(["bash", self._android_script("termux_source_build_check.sh"), "--help"])
+        self.assertEqual(proc.returncode, 0, msg=proc.stderr)
+        self.assertIn("--mode <auto|termux-native|ndk-cross>", proc.stdout)
+        self.assertIn("--diagnose-log <p>", proc.stdout)
+
+    def test_android_selfcheck_diagnose_log_ndk_cross(self) -> None:
+        log_path = self.tmp / "android-failure.log"
+        log_path.write_text(
+            textwrap.dedent(
+                """
+                error occurred in cc-rs: failed to find tool "aarch64-linux-android-clang": No such file or directory (os error 2)
+                """
+            ).strip()
+            + "\n",
+            encoding="utf-8",
+        )
+        proc = run_cmd(
+            [
+                "bash",
+                self._android_script("termux_source_build_check.sh"),
+                "--target",
+                "aarch64-linux-android",
+                "--mode",
+                "ndk-cross",
+                "--diagnose-log",
+                str(log_path),
+            ]
+        )
+        self.assertEqual(proc.returncode, 0, msg=proc.stderr)
+        combined = f"{proc.stdout}\n{proc.stderr}"
+        self.assertIn("detected cc-rs compiler lookup failure", combined)
+        self.assertIn("export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER", combined)
+        self.assertIn("export CC_aarch64_linux_android", combined)
+
+    def test_android_selfcheck_diagnose_log_termux_native(self) -> None:
+        log_path = self.tmp / "android-failure-termux.log"
+        log_path.write_text(
+            textwrap.dedent(
+                """
+                error occurred in cc-rs: failed to find tool "aarch64-linux-android-clang": No such file or directory (os error 2)
+                """
+            ).strip()
+            + "\n",
+            encoding="utf-8",
+        )
+        proc = run_cmd(
+            [
+                "bash",
+                self._android_script("termux_source_build_check.sh"),
+                "--target",
+                "aarch64-linux-android",
+                "--mode",
+                "termux-native",
+                "--diagnose-log",
+                str(log_path),
+            ]
+        )
+        self.assertEqual(proc.returncode, 0, msg=proc.stderr)
+        combined = f"{proc.stdout}\n{proc.stderr}"
+        self.assertIn("suggested recovery (termux-native)", combined)
+        self.assertIn("unset CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER", combined)
 
     def test_emit_audit_event_envelope(self) -> None:
         payload_path = self.tmp / "payload.json"

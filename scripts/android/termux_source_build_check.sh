@@ -4,11 +4,12 @@ set -euo pipefail
 TARGET="aarch64-linux-android"
 RUN_CARGO_CHECK=0
 MODE="auto"
+DIAGNOSE_LOG=""
 
 usage() {
   cat <<'EOF'
 Usage:
-  scripts/android/termux_source_build_check.sh [--target <triple>] [--mode <auto|termux-native|ndk-cross>] [--run-cargo-check]
+  scripts/android/termux_source_build_check.sh [--target <triple>] [--mode <auto|termux-native|ndk-cross>] [--run-cargo-check] [--diagnose-log <path>]
 
 Options:
   --target <triple>    Android Rust target (default: aarch64-linux-android)
@@ -18,6 +19,7 @@ Options:
                        termux-native: expect plain clang + no cross overrides
                        ndk-cross: expect NDK wrapper linker + matching CC_*
   --run-cargo-check    Run cargo check --locked --target <triple> --no-default-features
+  --diagnose-log <p>   Diagnose an existing cargo error log and print targeted recovery commands.
   -h, --help           Show this help
 
 Purpose:
@@ -55,6 +57,11 @@ while [[ $# -gt 0 ]]; do
     --mode)
       [[ $# -ge 2 ]] || die "--mode requires a value"
       MODE="$2"
+      shift 2
+      ;;
+    --diagnose-log)
+      [[ $# -ge 2 ]] || die "--diagnose-log requires a path"
+      DIAGNOSE_LOG="$2"
       shift 2
       ;;
     -h|--help)
@@ -196,11 +203,13 @@ else
 fi
 log "mode: $effective_mode"
 
-command_exists rustup || die "rustup is not installed"
-command_exists cargo || die "cargo is not installed"
+if [[ -z "$DIAGNOSE_LOG" ]]; then
+  command_exists rustup || die "rustup is not installed"
+  command_exists cargo || die "cargo is not installed"
 
-if ! rustup target list --installed | grep -Fx "$TARGET" >/dev/null 2>&1; then
-  die "Rust target '$TARGET' is not installed. Run: rustup target add $TARGET"
+  if ! rustup target list --installed | grep -Fx "$TARGET" >/dev/null 2>&1; then
+    die "Rust target '$TARGET' is not installed. Run: rustup target add $TARGET"
+  fi
 fi
 
 config_linker="$(extract_linker_from_config || true)"
@@ -224,7 +233,12 @@ effective_linker="${cargo_linker_override:-${config_linker:-clang}}"
 log "effective linker: $effective_linker"
 
 if [[ "$effective_mode" == "termux-native" ]]; then
-  command_exists clang || die "clang is required in Termux. Run: pkg install -y clang pkg-config"
+  if ! command_exists clang; then
+    if [[ "$is_termux" -eq 1 ]]; then
+      die "clang is required in Termux. Run: pkg install -y clang pkg-config"
+    fi
+    warn "clang is not available on this non-Termux host; termux-native checks are partial"
+  fi
 
   if [[ "${config_linker:-}" != "clang" ]]; then
     warn "Termux native build should use linker = \"clang\" for $TARGET"
@@ -265,9 +279,21 @@ fi
 
 if ! is_executable_tool "$effective_linker"; then
   if [[ "$effective_mode" == "termux-native" ]]; then
-    die "effective linker '$effective_linker' is not executable in PATH"
+    if [[ "$is_termux" -eq 1 ]]; then
+      die "effective linker '$effective_linker' is not executable in PATH"
+    fi
+    warn "effective linker '$effective_linker' not executable on this non-Termux host"
+  else
+    warn "effective linker '$effective_linker' not found (expected for some desktop hosts without NDK toolchain)"
   fi
-  warn "effective linker '$effective_linker' not found (expected for some desktop hosts without NDK toolchain)"
+fi
+
+if [[ -n "$DIAGNOSE_LOG" ]]; then
+  [[ -f "$DIAGNOSE_LOG" ]] || die "diagnose log file does not exist: $DIAGNOSE_LOG"
+  log "diagnosing provided cargo log: $DIAGNOSE_LOG"
+  diagnose_cargo_failure "$DIAGNOSE_LOG"
+  log "diagnosis completed"
+  exit 0
 fi
 
 if [[ "$RUN_CARGO_CHECK" -eq 1 ]]; then
