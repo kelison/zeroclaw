@@ -1162,6 +1162,20 @@ pub fn create_provider_with_url(
     create_provider_with_url_and_options(name, api_key, api_url, &ProviderRuntimeOptions::default())
 }
 
+fn resolve_lmstudio_connection(api_url: Option<&str>, key: Option<&str>) -> (String, String) {
+    let base_url = api_url
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("http://localhost:1234/v1")
+        .to_string();
+    let lm_studio_key = key
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("lm-studio")
+        .to_string();
+    (base_url, lm_studio_key)
+}
+
 /// Factory: create provider with optional base URL and runtime options.
 #[allow(clippy::too_many_lines)]
 fn create_provider_with_url_and_options(
@@ -1453,14 +1467,11 @@ fn create_provider_with_url_and_options(
         "copilot" | "github-copilot" => Ok(Box::new(copilot::CopilotProvider::new(key))),
         "cursor" => Ok(Box::new(cursor::CursorProvider::new())),
         "lmstudio" | "lm-studio" => {
-            let lm_studio_key = key
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-                .unwrap_or("lm-studio");
+            let (base_url, lm_studio_key) = resolve_lmstudio_connection(api_url, key);
             Ok(Box::new(OpenAiCompatibleProvider::new(
                 "LM Studio",
-                "http://localhost:1234/v1",
-                Some(lm_studio_key),
+                &base_url,
+                Some(&lm_studio_key),
                 AuthStyle::Bearer,
             )))
         }
@@ -2761,6 +2772,37 @@ mod tests {
         assert!(create_provider("lmstudio", Some("key")).is_ok());
         assert!(create_provider("lm-studio", Some("key")).is_ok());
         assert!(create_provider("lmstudio", None).is_ok());
+    }
+
+    #[test]
+    fn lmstudio_connection_prefers_custom_base_url() {
+        let (base_url, key) =
+            resolve_lmstudio_connection(Some("http://10.0.0.15:1234/v1"), Some("custom-key"));
+        assert_eq!(base_url, "http://10.0.0.15:1234/v1");
+        assert_eq!(key, "custom-key");
+    }
+
+    #[test]
+    fn lmstudio_connection_uses_safe_defaults_when_unset() {
+        let (base_url, key) = resolve_lmstudio_connection(Some("   "), None);
+        assert_eq!(base_url, "http://localhost:1234/v1");
+        assert_eq!(key, "lm-studio");
+    }
+
+    #[test]
+    fn factory_lmstudio_with_custom_url() {
+        assert!(create_provider_with_url(
+            "lmstudio",
+            Some("key"),
+            Some("http://10.0.0.22:1234/v1")
+        )
+        .is_ok());
+        assert!(create_provider_with_url(
+            "lm-studio",
+            None,
+            Some("http://host.docker.internal:1234")
+        )
+        .is_ok());
     }
 
     #[test]
