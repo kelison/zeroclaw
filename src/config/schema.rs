@@ -3084,6 +3084,8 @@ pub struct ChannelsConfig {
     pub qq: Option<QQConfig>,
     #[cfg(feature = "channel-nostr")]
     pub nostr: Option<NostrConfig>,
+    /// Tauri channel configuration.
+    pub tauri: Option<TauriChannelConfig>,
     /// ClawdTalk voice channel configuration.
     pub clawdtalk: Option<crate::channels::ClawdTalkConfig>,
     /// Base timeout in seconds for processing a single channel message (LLM + tools).
@@ -3147,6 +3149,10 @@ impl ChannelsConfig {
             (
                 Box::new(ConfigWrapper::new(self.nextcloud_talk.as_ref())),
                 self.nextcloud_talk.is_some(),
+            ),
+            (
+                Box::new(ConfigWrapper::new(self.tauri.as_ref())),
+                self.tauri.is_some(),
             ),
             (
                 Box::new(ConfigWrapper::new(self.email.as_ref())),
@@ -3227,6 +3233,7 @@ impl Default for ChannelsConfig {
             qq: None,
             #[cfg(feature = "channel-nostr")]
             nostr: None,
+            tauri: None,
             clawdtalk: None,
             message_timeout_secs: default_channel_message_timeout_secs(),
             ack_reactions: true,
@@ -4108,6 +4115,31 @@ pub fn default_nostr_relays() -> Vec<String> {
         "wss://relay.primal.net".to_string(),
         "wss://relay.snort.social".to_string(),
     ]
+}
+
+/// Tauri integration channel configuration.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct TauriChannelConfig {
+    /// Port for the WebSocket server
+    pub port: u16,
+    /// Root path for workspace access via Tauri
+    pub workspace: String,
+    /// List of allowed local users
+    #[serde(default = "default_tauri_allowed_users")]
+    pub allowed_users: Vec<String>,
+}
+
+impl ChannelConfig for TauriChannelConfig {
+    fn name() -> &'static str {
+        "Tauri"
+    }
+    fn desc() -> &'static str {
+        "connect to Tauri app"
+    }
+}
+
+fn default_tauri_allowed_users() -> Vec<String> {
+    vec!["*".to_string()]
 }
 
 // ── Config impl ──────────────────────────────────────────────────
@@ -5937,6 +5969,7 @@ mod tests {
     #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
     use std::path::PathBuf;
+    #[cfg(unix)]
     use tempfile::TempDir;
     use tokio::sync::{Mutex, MutexGuard};
     use tokio::test;
@@ -6242,6 +6275,7 @@ default_temperature = 0.7
                 qq: None,
                 #[cfg(feature = "channel-nostr")]
                 nostr: None,
+                tauri: None,
                 clawdtalk: None,
                 message_timeout_secs: 300,
                 ack_reactions: true,
@@ -6954,7 +6988,9 @@ allowed_users = ["@ops:matrix.org"]
             dingtalk: None,
             wecom: None,
             qq: None,
+            #[cfg(feature = "channel-nostr")]
             nostr: None,
+            tauri: None,
             clawdtalk: None,
             message_timeout_secs: 300,
             ack_reactions: true,
@@ -7170,7 +7206,9 @@ channel_id = "C123"
             dingtalk: None,
             wecom: None,
             qq: None,
+            #[cfg(feature = "channel-nostr")]
             nostr: None,
+            tauri: None,
             clawdtalk: None,
             message_timeout_secs: 300,
             ack_reactions: true,

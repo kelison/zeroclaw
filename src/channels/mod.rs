@@ -34,6 +34,7 @@ pub mod qq;
 pub mod signal;
 pub mod slack;
 pub mod telegram;
+pub mod tauri;
 pub mod traits;
 pub mod transcription;
 pub mod tts;
@@ -65,6 +66,7 @@ pub use qq::QQChannel;
 pub use signal::SignalChannel;
 pub use slack::SlackChannel;
 pub use telegram::TelegramChannel;
+pub use tauri::TauriChannel;
 pub use traits::{Channel, SendMessage};
 #[allow(unused_imports)]
 pub use tts::{TtsManager, TtsProvider};
@@ -3195,6 +3197,13 @@ fn collect_configured_channels(
                 tracing::warn!("WhatsApp config invalid: neither phone_number_id (Cloud API) nor session_path (Web) is set");
             }
         }
+    }
+
+    if let Some(ref tr) = config.channels_config.tauri {
+        channels.push(ConfiguredChannel {
+            display_name: "Tauri",
+            channel: Arc::new(TauriChannel::new(tr.clone())),
+        });
     }
 
     if let Some(ref lq) = config.channels_config.linq {

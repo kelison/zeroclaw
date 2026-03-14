@@ -2,7 +2,7 @@
 use crate::config::schema::{default_nostr_relays, NostrConfig};
 use crate::config::schema::{
     DingTalkConfig, IrcConfig, LarkReceiveMode, LinqConfig, NextcloudTalkConfig, QQConfig,
-    SignalConfig, StreamMode, WhatsAppConfig,
+    SignalConfig, StreamMode, TauriChannelConfig, WhatsAppConfig,
 };
 use crate::config::{
     AutonomyConfig, BrowserConfig, ChannelsConfig, ComposioConfig, Config, DiscordConfig,
@@ -3361,6 +3361,7 @@ enum ChannelMenuChoice {
     Irc,
     Webhook,
     NextcloudTalk,
+    Tauri,
     DingTalk,
     QqOfficial,
     Lark,
@@ -3382,6 +3383,7 @@ const CHANNEL_MENU_CHOICES: &[ChannelMenuChoice] = &[
     ChannelMenuChoice::Irc,
     ChannelMenuChoice::Webhook,
     ChannelMenuChoice::NextcloudTalk,
+    ChannelMenuChoice::Tauri,
     ChannelMenuChoice::DingTalk,
     ChannelMenuChoice::QqOfficial,
     ChannelMenuChoice::Lark,
@@ -3494,6 +3496,14 @@ fn setup_channels() -> Result<ChannelsConfig> {
                         "✅ connected"
                     } else {
                         "— Talk webhook + OCS API"
+                    }
+                ),
+                ChannelMenuChoice::Tauri => format!(
+                    "Tauri      {}",
+                    if config.tauri.is_some() {
+                        "✅ connected"
+                    } else {
+                        "— Local Desktop WebSocket"
                     }
                 ),
                 ChannelMenuChoice::DingTalk => format!(
@@ -4572,6 +4582,55 @@ fn setup_channels() -> Result<ChannelsConfig> {
                     "  {} Webhook on port {}",
                     style("✅").green().bold(),
                     style(&port).cyan()
+                );
+            }
+            ChannelMenuChoice::Tauri => {
+                // ── Tauri ──
+                println!();
+                println!(
+                    "  {} {}",
+                    style("Tauri Setup").white().bold(),
+                    style("— Local Desktop WebSocket for Tauri Apps").dim()
+                );
+                print_bullet("This creates a local WebSocket server that Tauri apps can connect to.");
+                println!();
+
+                let port_str: String = Input::new()
+                    .with_prompt("  WebSocket port")
+                    .default("7703".into())
+                    .interact_text()?;
+                let port = port_str.parse::<u16>().unwrap_or(7703);
+
+                let workspace_default = std::env::current_dir()
+                    .unwrap_or_else(|_| std::path::PathBuf::from("."))
+                    .to_string_lossy()
+                    .to_string();
+                let workspace: String = Input::new()
+                    .with_prompt("  Workspace absolute path for file access")
+                    .default(workspace_default)
+                    .interact_text()?;
+
+                let users_str: String = Input::new()
+                    .with_prompt("  Allowed local users (comma-separated, '*' for all)")
+                    .default("*".into())
+                    .interact_text()?;
+
+                let allowed_users = users_str
+                    .split(',')
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect();
+
+                config.tauri = Some(TauriChannelConfig {
+                    port,
+                    workspace,
+                    allowed_users,
+                });
+
+                println!(
+                    "  {} Tauri WebSocket server configured on port {}",
+                    style("✅").green().bold(),
+                    style(port).cyan()
                 );
             }
             ChannelMenuChoice::NextcloudTalk => {
